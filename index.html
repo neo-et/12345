@@ -1,0 +1,286 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <title>Tetris Example</title>
+  <style>
+    body {
+      margin: 0;
+      padding: 0;
+      text-align: center;
+      font-family: sans-serif;
+      background: #f2f2f2;
+    }
+
+    h1 {
+      margin-top: 20px;
+    }
+
+    #tetris {
+      background: #fff;
+      display: block;
+      margin: 20px auto;
+      border: 2px solid #000;
+    }
+
+    #score {
+      font-size: 18px;
+      margin-top: 10px;
+    }
+  </style>
+</head>
+<body>
+  <h1>간단 테트리스</h1>
+  <canvas id="tetris" width="240" height="400"></canvas>
+  <div id="score">점수: 0</div>
+
+  <script>
+    const canvas = document.getElementById("tetris");
+    const context = canvas.getContext("2d");
+    context.scale(20, 20); 
+    // 기본 블록 크기를 1칸 = 20px로 설정
+
+    // 테트리스 블록 모양들
+    function createPiece(type) {
+      switch (type) {
+        case "T":
+          return [
+            [0, 1, 0],
+            [1, 1, 1],
+            [0, 0, 0],
+          ];
+        case "O":
+          return [
+            [1, 1],
+            [1, 1],
+          ];
+        case "L":
+          return [
+            [0, 0, 1],
+            [1, 1, 1],
+            [0, 0, 0],
+          ];
+        case "J":
+          return [
+            [1, 0, 0],
+            [1, 1, 1],
+            [0, 0, 0],
+          ];
+        case "I":
+          return [
+            [0, 0, 0, 0],
+            [1, 1, 1, 1],
+            [0, 0, 0, 0],
+            [0, 0, 0, 0],
+          ];
+        case "S":
+          return [
+            [0, 1, 1],
+            [1, 1, 0],
+            [0, 0, 0],
+          ];
+        case "Z":
+          return [
+            [1, 1, 0],
+            [0, 1, 1],
+            [0, 0, 0],
+          ];
+      }
+    }
+
+    // 12칸(가로) x 20칸(세로) 보드 생성
+    const arena = createMatrix(12, 20);
+
+    // 현재 조각 정보
+    const player = {
+      pos: { x: 0, y: 0 },
+      matrix: null,
+      score: 0,
+    };
+
+    // 보드 2차원 배열 생성
+    function createMatrix(w, h) {
+      const matrix = [];
+      while (h--) {
+        matrix.push(new Array(w).fill(0));
+      }
+      return matrix;
+    }
+
+    // 보드와 현재 조각이 충돌하는지 확인
+    function collide(arena, player) {
+      const [m, o] = [player.matrix, player.pos];
+      for (let y = 0; y < m.length; ++y) {
+        for (let x = 0; x < m[y].length; ++x) {
+          if (
+            m[y][x] !== 0 &&
+            (arena[y + o.y] && arena[y + o.y][x + o.x]) !== 0
+          ) {
+            return true;
+          }
+        }
+      }
+      return false;
+    }
+
+    // 보드 그리기
+    function drawMatrix(matrix, offset) {
+      for (let y = 0; y < matrix.length; y++) {
+        for (let x = 0; x < matrix[y].length; x++) {
+          if (matrix[y][x] !== 0) {
+            context.fillStyle = "#"+((1<<24)*Math.random()|0).toString(16);
+            context.fillRect(x + offset.x, y + offset.y, 1, 1);
+          }
+        }
+      }
+    }
+
+    // 전체 보드와 현재 조각을 그리는 함수
+    function draw() {
+      context.clearRect(0, 0, canvas.width, canvas.height);
+      drawMatrix(arena, { x: 0, y: 0 });
+      drawMatrix(player.matrix, player.pos);
+    }
+
+    // 보드에 현재 조각을 합침
+    function merge(arena, player) {
+      player.matrix.forEach((row, y) => {
+        row.forEach((value, x) => {
+          if (value !== 0) {
+            arena[y + player.pos.y][x + player.pos.x] = value;
+          }
+        });
+      });
+    }
+
+    // 줄이 모두 채워졌는지 확인 후 제거
+    function arenaSweep() {
+      outer: for (let y = arena.length - 1; y > 0; y--) {
+        for (let x = 0; x < arena[y].length; x++) {
+          if (arena[y][x] === 0) {
+            continue outer;
+          }
+        }
+        const row = arena.splice(y, 1)[0].fill(0);
+        arena.unshift(row);
+        y++;
+        player.score += 10;
+      }
+    }
+
+    // 움직임 갱신
+    let dropCounter = 0;
+    let dropInterval = 1000; // 1초
+    let lastTime = 0;
+
+    function update(time = 0) {
+      const deltaTime = time - lastTime;
+      lastTime = time;
+
+      dropCounter += deltaTime;
+      if (dropCounter > dropInterval) {
+        playerDrop();
+      }
+
+      draw();
+      requestAnimationFrame(update);
+    }
+
+    // 블록을 아래로 한 칸 이동
+    function playerDrop() {
+      player.pos.y++;
+      if (collide(arena, player)) {
+        player.pos.y--;
+        merge(arena, player);
+        playerReset();
+        arenaSweep();
+        updateScore();
+      }
+      dropCounter = 0;
+    }
+
+    // 블록 좌우 이동
+    function playerMove(dir) {
+      player.pos.x += dir;
+      if (collide(arena, player)) {
+        player.pos.x -= dir;
+      }
+    }
+
+    // 블록 회전
+    function playerRotate(dir) {
+      const pos = player.pos.x;
+      let offset = 1;
+      rotate(player.matrix, dir);
+      // 회전하다 벽에 걸리면 이동해서 벽 밖으로 빼준다
+      while (collide(arena, player)) {
+        player.pos.x += offset;
+        offset = -(offset + (offset > 0 ? 1 : -1));
+        if (offset > player.matrix[0].length) {
+          // 회전 불가능할 때(공간이 없을 때) 원복
+          rotate(player.matrix, -dir);
+          player.pos.x = pos;
+          return;
+        }
+      }
+    }
+
+    function rotate(matrix, dir) {
+      for (let y = 0; y < matrix.length; y++) {
+        for (let x = 0; x < y; x++) {
+          [matrix[x][y], matrix[y][x]] = [matrix[y][x], matrix[x][y]];
+        }
+      }
+      if (dir > 0) {
+        matrix.forEach((row) => row.reverse());
+      } else {
+        matrix.reverse();
+      }
+    }
+
+    // 새로운 블록 생성
+    function playerReset() {
+      const pieces = "ILJOTSZ";
+      const randType = pieces[(pieces.length * Math.random()) | 0];
+      player.matrix = createPiece(randType);
+      player.pos.y = 0;
+      player.pos.x =
+        ((arena[0].length / 2) | 0) - ((player.matrix[0].length / 2) | 0);
+
+      // 처음부터 충돌이면 게임 오버(간단히 처리)
+      if (collide(arena, player)) {
+        arena.forEach((row) => row.fill(0));
+        player.score = 0;
+        updateScore();
+      }
+    }
+
+    // 점수 갱신
+    function updateScore() {
+      document.getElementById("score").innerText = "점수: " + player.score;
+    }
+
+    // 키 이벤트 처리
+    document.addEventListener("keydown", (event) => {
+      switch (event.key) {
+        case "ArrowLeft":
+          playerMove(-1);
+          break;
+        case "ArrowRight":
+          playerMove(1);
+          break;
+        case "ArrowDown":
+          playerDrop();
+          break;
+        case "ArrowUp":
+          playerRotate(1);
+          break;
+      }
+    });
+
+    playerReset();
+    updateScore();
+    update();
+  </script>
+</body>
+</html>
